@@ -60,13 +60,11 @@ jobs:
             libstdc++6:i386 zlib1g:i386 libncurses5:i386 \
             libgcc-s1:i386 libc6:i386 || true
 
-          # Install repo tool
           mkdir -p ~/bin
           curl -sL https://storage.googleapis.com/git-repo-downloads/repo -o ~/bin/repo
           chmod a+x ~/bin/repo
           echo "$HOME/bin" >> $GITHUB_PATH
 
-          # Setup ccache
           mkdir -p /home/runner/.ccache
           ccache -M 10G
 
@@ -86,6 +84,11 @@ jobs:
 
           repo sync -j$(nproc --all) --force-sync --no-clone-bundle --no-tags
 
+          echo "Source sync completed"
+          echo "Checking build envsetup.sh..."
+          ls -la build/envsetup.sh || echo "WARNING: build/envsetup.sh not found!"
+          ls build/ || true
+
       - name: Clone Device Tree
         run: |
           cd ${{ env.BUILD_DIR }}
@@ -103,6 +106,9 @@ jobs:
             cp -r $GITHUB_WORKSPACE/device/realme_gt_neo/* "device/realme/$DEVICE/"
           fi
 
+          echo "Device tree files:"
+          ls -la "device/realme/$DEVICE/"
+
           if [ ! -f "device/realme/$DEVICE/AndroidProducts.mk" ]; then
             echo "ERROR: Device tree not found or incomplete!"
             exit 1
@@ -112,10 +118,12 @@ jobs:
 
       - name: Build TWRP
         run: |
+          set -x
           cd ${{ env.BUILD_DIR }}
 
           DEVICE=${{ github.event.inputs.device_name }}
 
+          echo "=== Sourcing build/envsetup.sh ==="
           source build/envsetup.sh
 
           if [ "${{ github.event.inputs.make_clean }}" = "是" ]; then
@@ -128,12 +136,13 @@ jobs:
           export USE_CCACHE=1
           export CCACHE_DIR=/home/runner/.ccache
 
+          echo "=== Lunching omni_${DEVICE}-eng ==="
           lunch "omni_${DEVICE}-eng"
 
-          echo "Starting TWRP build..."
+          echo "=== Starting build ==="
           make -j$(nproc --all) recoveryimage
 
-          echo "Build completed!"
+          echo "=== Build completed ==="
           ls -la out/target/product/${DEVICE}/ || true
 
       - name: Upload Recovery Image
