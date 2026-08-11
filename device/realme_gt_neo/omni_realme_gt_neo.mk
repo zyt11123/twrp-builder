@@ -61,10 +61,19 @@ PRODUCT_PROPERTY_OVERRIDES += \
     dalvik.vm.heapminfree=512k \
     dalvik.vm.heapmaxfree=8m
 
-# Health (required for recovery)
+# Recovery essential packages
+# These are normally provided by vendor/twrp/config/common.mk
+# Since we don't have vendor/twrp, we must list them explicitly
 PRODUCT_PACKAGES += \
+    recovery \
+    adbd \
+    init_second_stage.recovery \
     android.hardware.health@2.1-impl \
     android.hardware.health@2.1-service
+
+# Copy recovery init script to root
+PRODUCT_COPY_FILES += \
+    device/realme/realme_gt_neo/recovery.fstab:recovery/root/etc/recovery.fstab
 
 # Call the proprietary setup (optional)
 $(call inherit-product-if-exists, vendor/realme/realme_gt_neo/realme_gt_neo-vendor.mk)
