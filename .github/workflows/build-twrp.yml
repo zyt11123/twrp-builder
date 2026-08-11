@@ -117,9 +117,21 @@ jobs:
 
       - name: Build TWRP
         run: |
+          set -e
+          set -x
+
           cd ${{ env.BUILD_DIR }}
 
           DEVICE=${{ github.event.inputs.device_name }}
+
+          echo "=== Debug: Current directory ==="
+          pwd
+          echo "=== Debug: Directory contents ==="
+          ls -la
+          echo "=== Debug: build/envsetup.sh exists? ==="
+          ls -la build/envsetup.sh || echo "ERROR: build/envsetup.sh not found!"
+          echo "=== Debug: Device tree ==="
+          find device/realme/${DEVICE}/ -type f 2>/dev/null || echo "WARNING: Device tree not found at device/realme/${DEVICE}/"
 
           # Set build vars BEFORE sourcing envsetup
           export ALLOW_MISSING_DEPENDENCIES=true
@@ -129,7 +141,9 @@ jobs:
           export CCACHE_DIR=/home/runner/.ccache
 
           # Setup build environment
+          echo "=== Sourcing build/envsetup.sh ==="
           source build/envsetup.sh
+          echo "=== envsetup.sh completed ==="
 
           # Clean if requested
           if [ "${{ github.event.inputs.make_clean }}" = "是" ]; then
@@ -138,13 +152,19 @@ jobs:
           fi
 
           # Lunch and build
-          lunch "omni_${DEVICE}-eng"
+          echo "=== Running lunch omni_${DEVICE}-eng ==="
+          lunch "omni_${DEVICE}-eng" || {
+            echo "=== Lunch failed! Trying to list available lunch targets ==="
+            lunch 2>/dev/null | head -50 || true
+            exit 1
+          }
+          echo "=== Lunch succeeded ==="
 
           echo "Starting TWRP build..."
-          make -j$(nproc --all) recoveryimage
+          make -j$(nproc --all) recoveryimage 2>&1 | tee build.log
 
           echo "Build completed!"
-          ls -la out/target/product/${DEVICE}/
+          ls -la out/target/product/${DEVICE}/ || echo "Output directory not found"
 
       - name: Upload Recovery Image
         uses: actions/upload-artifact@v4
