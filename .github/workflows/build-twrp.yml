@@ -1,0 +1,178 @@
+name: Build TWRP Recovery
+
+on:
+  workflow_dispatch:
+    inputs:
+      device_name:
+        description: '设备代号 (如: realme_gt_neo)'
+        required: true
+        default: 'realme_gt_neo'
+      twrp_branch:
+        description: 'TWRP 分支版本'
+        required: true
+        type: choice
+        options:
+          - 'twrp-12.1'
+          - 'twrp-11'
+          - 'twrp-10.0'
+        default: 'twrp-12.1'
+      device_tree_repo:
+        description: 'Device Tree 仓库地址 (留空则使用本地配置)'
+        required: false
+        default: ''
+      device_tree_branch:
+        description: 'Device Tree 分支'
+        required: false
+        default: 'android-12.1'
+      make_clean:
+        description: '是否清理编译缓存'
+        required: true
+        type: choice
+        options:
+          - '否'
+          - '是'
+        default: '否'
+
+env:
+  MANIFEST_URL: https://github.com/minimal-manifest-twrp/platform_manifest_twrp_aosp.git
+  BUILD_DIR: /home/runner/twrp
+
+jobs:
+  build:
+    name: Build TWRP for ${{ github.event.inputs.device_name }}
+    runs-on: ubuntu-22.04
+    timeout-minutes: 360
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Build Environment
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            git-core gnupg flex bison gperf build-essential \
+            zip curl zlib1g-dev libc6-dev-i386 libncurses5 \
+            x11proto-core-dev libx11-dev lib32z1-dev libgl1-mesa-dev \
+            libxml2-utils xsltproc unzip fontconfig python3 python3-pip \
+            libssl-dev bc cpio ccache openssl lz4 tar rsync \
+            libstdc++6:i386 libgcc1:i386 zlib1g:i386 libncurses5:i386
+
+          # Setup ccache
+          mkdir -p /home/runner/.ccache
+          export CCACHE_DIR=/home/runner/.ccache
+          ccache -M 10G
+
+          # Setup repo tool
+          mkdir -p ~/bin
+          curl https://storage.googleapis.com/git-repo-downloads/repo > ~/bin/repo
+          chmod a+x ~/bin/repo
+          echo "$HOME/bin" >> $GITHUB_PATH
+
+      - name: Sync TWRP Source
+        run: |
+          mkdir -p ${{ env.BUILD_DIR }}
+          cd ${{ env.BUILD_DIR }}
+
+          # Configure git
+          git config --global user.name "TWRP Builder"
+          git config --global user.email "builder@twrp.local"
+
+          # Initialize repo with TWRP manifest
+          repo init --depth=1 \
+            -u ${{ env.MANIFEST_URL }} \
+            -b ${{ github.event.inputs.twrp_branch }}
+
+          # Sync source code
+          repo sync -j$(nproc --all) --force-sync --no-clone-bundle --no-tags
+
+      - name: Clone Device Tree
+        run: |
+          cd ${{ env.BUILD_DIR }}
+
+          DEVICE=${{ github.event.inputs.device_name }}
+          DT_REPO=${{ github.event.inputs.device_tree_repo }}
+          DT_BRANCH=${{ github.event.inputs.device_tree_branch }}
+
+          if [ -n "$DT_REPO" ]; then
+            # Use external device tree
+            echo "Cloning device tree from: $DT_REPO (branch: $DT_BRANCH)"
+            git clone "$DT_REPO" -b "$DT_BRANCH" "device/realme/$DEVICE" --depth=1
+          else
+            # Use local device tree from this repository
+            echo "Using local device tree from repository"
+            mkdir -p "device/realme/$DEVICE"
+            cp -r $GITHUB_WORKSPACE/device/realme_gt_neo/* "device/realme/$DEVICE/"
+          fi
+
+          # Verify device tree
+          if [ ! -f "device/realme/$DEVICE/AndroidProducts.mk" ]; then
+            echo "ERROR: Device tree not found or incomplete!"
+            echo "Expected: device/realme/$DEVICE/AndroidProducts.mk"
+            exit 1
+          fi
+
+          echo "Device tree setup complete"
+
+      - name: Build TWRP
+        run: |
+          cd ${{ env.BUILD_DIR }}
+
+          DEVICE=${{ github.event.inputs.device_name }}
+
+          # Setup build environment
+          source build/envsetup.sh
+
+          # Clean if requested
+          if [ "${{ github.event.inputs.make_clean }}" = "是" ]; then
+            echo "Cleaning build directory..."
+            make clean
+          fi
+
+          # Lunch and build
+          export ALLOW_MISSING_DEPENDENCIES=true
+          export LC_ALL=C
+          export USE_CCACHE=1
+          export CCACHE_DIR=/home/runner/.ccache
+
+          lunch "twrp_${DEVICE}-eng"
+
+          echo "Starting TWRP build..."
+          make -j$(nproc --all) recoveryimage
+
+          echo "Build completed!"
+          ls -la out/target/product/${DEVICE}/
+
+      - name: Upload Recovery Image
+        uses: actions/upload-artifact@v4
+        with:
+          name: twrp-${{ github.event.inputs.device_name }}-${{ github.run_id }}
+          path: |
+            ${{ env.BUILD_DIR }}/out/target/product/${{ github.event.inputs.device_name }}/recovery.img
+            ${{ env.BUILD_DIR }}/out/target/product/${{ github.event.inputs.device_name }}/boot.img
+          if-no-files-found: warn
+
+      - name: Generate Build Info
+        if: always()
+        run: |
+          cd ${{ env.BUILD_DIR }}
+          DEVICE=${{ github.event.inputs.device_name }}
+
+          echo "=== Build Information ===" > build_info.txt
+          echo "Device: $DEVICE" >> build_info.txt
+          echo "TWRP Branch: ${{ github.event.inputs.twrp_branch }}" >> build_info.txt
+          echo "Build Date: $(date -u)" >> build_info.txt
+          echo "GitHub Run ID: ${{ github.run_id }}" >> build_info.txt
+
+          if [ -f "out/target/product/${DEVICE}/recovery.img" ]; then
+            echo "Recovery Size: $(du -h out/target/product/${DEVICE}/recovery.img | cut -f1)" >> build_info.txt
+          fi
+
+          cat build_info.txt
+
+      - name: Upload Build Info
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-info-${{ github.run_id }}
+          path: ${{ env.BUILD_DIR }}/build_info.txt

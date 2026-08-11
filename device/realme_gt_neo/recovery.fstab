@@ -1,0 +1,38 @@
+# Android fstab for Realme GT Neo (RMX3031)
+# <src>                                          <mnt_point>  <type>  <mnt_flags and options>  <fs_mgr_flags>
+
+# System
+/dev/block/by-name/system                        /system      ext4    ro,barrier=1             wait,slotselect,logical,first_stage_mount
+/dev/block/by-name/system_ext                    /system_ext  ext4    ro,barrier=1             wait,slotselect,logical,first_stage_mount
+
+# Vendor
+/dev/block/by-name/vendor                        /vendor      ext4    ro,barrier=1             wait,slotselect,logical,first_stage_mount
+
+# Product
+/dev/block/by-name/product                       /product     ext4    ro,barrier=1             wait,slotselect,logical,first_stage_mount
+
+# Userdata
+/dev/block/by-name/userdata                      /data        f2fs    noatime,nosuid,nodev,discard,inlinecrypt  wait,check,fileencryption=aes-256-xts:aes-256-cts:v2,keydirectory=/metadata/vold/metadata_encryption,quota,reservedsize=128M,sysfs_path=/dev/sys/block/bootdevice
+
+# Boot
+/dev/block/by-name/boot                          /boot        emmc    defaults                 defaults
+
+# Misc
+/dev/block/by-name/misc                          /misc        emmc    defaults                 defaults
+
+# Recovery
+/dev/block/by-name/recovery                      /recovery    emmc    defaults                 defaults
+
+# Metadata
+/dev/block/by-name/metadata                      /metadata    ext4    noatime,nosuid,nodev     wait,formattable,first_stage_mount
+
+# Cache
+/dev/block/by-name/cache                         /cache       ext4    noatime,nosuid,nodev     wait
+
+# External storage
+/dev/block/mmcblk1p1                             /external_sd vfat    defaults                 wait
+/dev/block/mmcblk1                               /external_sd auto    defaults                 wait
+
+# USB OTG
+/dev/block/sda1                                  /usb_otg     vfat    defaults                 wait
+/dev/block/sda                                   /usb_otg     auto    defaults                 wait
