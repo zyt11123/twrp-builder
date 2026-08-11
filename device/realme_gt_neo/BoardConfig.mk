@@ -26,6 +26,11 @@ TARGET_2ND_CPU_ABI2 := armeabi
 TARGET_2ND_CPU_VARIANT := cortex-a55
 TARGET_2ND_CPU_VARIANT_RUNTIME := cortex-a55
 
+# TWRP recovery builds 32-bit apps only - this is intentional for recovery
+TARGET_SUPPORTS_64_BIT_APPS := false
+TARGET_CPU_SMP := true
+ARCH_ARM_HAVE_TLS_REGISTER := true
+
 # Boot image
 BOARD_KERNEL_CMDLINE := bootopt=64S3,32N2,64N2
 BOARD_KERNEL_CMDLINE += androidboot.selinux=permissive
@@ -48,16 +53,8 @@ BOARD_MKBOOTIMG_ARGS += --pagesize $(BOARD_KERNEL_PAGESIZE)
 BOARD_MKBOOTIMG_ARGS += --base $(BOARD_KERNEL_BASE)
 
 # Kernel
-# 预编译内核未提供，使用 TARGET_NO_KERNEL 跳过内核构建
 TARGET_NO_KERNEL := true
-# 如需使用预编译内核，请将 Image.gz-dtb 放入 device/realme/realme_gt_neo/prebuilt/ 目录
-# 并取消下面注释，同时将 TARGET_NO_KERNEL 设为 false
-# TARGET_PREBUILT_KERNEL := device/realme/realme_gt_neo/prebuilt/Image.gz-dtb
 BOARD_KERNEL_IMAGE_NAME := Image.gz-dtb
-# TARGET_KERNEL_SOURCE := kernel/realme/mt6893
-# TARGET_KERNEL_CONFIG := realme_gt_neo_defconfig
-# TARGET_KERNEL_CLANG_COMPILE := true
-# TARGET_KERNEL_CLANG_VERSION := r416183b
 
 # FSTAB
 TARGET_RECOVERY_FSTAB := device/realme/realme_gt_neo/recovery.fstab
@@ -134,7 +131,6 @@ TW_SUPPORT_INPUT_AIDL_HAPTICS_FIX_OFF := true
 # Debug
 TARGET_USES_LOGD := true
 TWRP_INCLUDE_LOGCAT := true
-# TARGET_RECOVERY_INITRC := device/realme/realme_gt_neo/recovery/init.recovery.mt6893.rc
 
 # SE Linux
 BOARD_KERNEL_CMDLINE += androidboot.selinux=permissive
