@@ -49,6 +49,7 @@ jobs:
 
       - name: Setup Build Environment
         run: |
+          sudo dpkg --add-architecture i386
           sudo apt-get update
           sudo apt-get install -y \
             git-core gnupg flex bison gperf build-essential \
@@ -56,34 +57,33 @@ jobs:
             x11proto-core-dev libx11-dev lib32z1-dev libgl1-mesa-dev \
             libxml2-utils xsltproc unzip fontconfig python3 python3-pip \
             libssl-dev bc cpio ccache openssl lz4 tar rsync \
-            libstdc++6:i386 libgcc1:i386 zlib1g:i386 libncurses5:i386
+            libstdc++6:i386 zlib1g:i386 libncurses5:i386 \
+            libgcc-s1:i386 libc6:i386 || true
+
+          # Install repo tool
+          mkdir -p ~/bin
+          curl -sL https://storage.googleapis.com/git-repo-downloads/repo -o ~/bin/repo
+          chmod a+x ~/bin/repo
+          echo "$HOME/bin" >> $GITHUB_PATH
 
           # Setup ccache
           mkdir -p /home/runner/.ccache
-          export CCACHE_DIR=/home/runner/.ccache
           ccache -M 10G
 
-          # Setup repo tool
-          mkdir -p ~/bin
-          curl https://storage.googleapis.com/git-repo-downloads/repo > ~/bin/repo
-          chmod a+x ~/bin/repo
-          echo "$HOME/bin" >> $GITHUB_PATH
+          echo "Build environment ready"
 
       - name: Sync TWRP Source
         run: |
           mkdir -p ${{ env.BUILD_DIR }}
           cd ${{ env.BUILD_DIR }}
 
-          # Configure git
           git config --global user.name "TWRP Builder"
           git config --global user.email "builder@twrp.local"
 
-          # Initialize repo with TWRP manifest
           repo init --depth=1 \
             -u ${{ env.MANIFEST_URL }} \
             -b ${{ github.event.inputs.twrp_branch }}
 
-          # Sync source code
           repo sync -j$(nproc --all) --force-sync --no-clone-bundle --no-tags
 
       - name: Clone Device Tree
@@ -95,20 +95,16 @@ jobs:
           DT_BRANCH=${{ github.event.inputs.device_tree_branch }}
 
           if [ -n "$DT_REPO" ]; then
-            # Use external device tree
             echo "Cloning device tree from: $DT_REPO (branch: $DT_BRANCH)"
             git clone "$DT_REPO" -b "$DT_BRANCH" "device/realme/$DEVICE" --depth=1
           else
-            # Use local device tree from this repository
             echo "Using local device tree from repository"
             mkdir -p "device/realme/$DEVICE"
             cp -r $GITHUB_WORKSPACE/device/realme_gt_neo/* "device/realme/$DEVICE/"
           fi
 
-          # Verify device tree
           if [ ! -f "device/realme/$DEVICE/AndroidProducts.mk" ]; then
             echo "ERROR: Device tree not found or incomplete!"
-            echo "Expected: device/realme/$DEVICE/AndroidProducts.mk"
             exit 1
           fi
 
@@ -120,28 +116,25 @@ jobs:
 
           DEVICE=${{ github.event.inputs.device_name }}
 
-          # Setup build environment
           source build/envsetup.sh
 
-          # Clean if requested
           if [ "${{ github.event.inputs.make_clean }}" = "是" ]; then
             echo "Cleaning build directory..."
             make clean
           fi
 
-          # Lunch and build
           export ALLOW_MISSING_DEPENDENCIES=true
           export LC_ALL=C
           export USE_CCACHE=1
           export CCACHE_DIR=/home/runner/.ccache
 
-          lunch "twrp_${DEVICE}-eng"
+          lunch "omni_${DEVICE}-eng"
 
           echo "Starting TWRP build..."
           make -j$(nproc --all) recoveryimage
 
           echo "Build completed!"
-          ls -la out/target/product/${DEVICE}/
+          ls -la out/target/product/${DEVICE}/ || true
 
       - name: Upload Recovery Image
         uses: actions/upload-artifact@v4
@@ -155,7 +148,13 @@ jobs:
       - name: Generate Build Info
         if: always()
         run: |
-          cd ${{ env.BUILD_DIR }}
+          if [ -d "${{ env.BUILD_DIR }}" ]; then
+            cd ${{ env.BUILD_DIR }}
+          else
+            mkdir -p ${{ env.BUILD_DIR }}
+            cd ${{ env.BUILD_DIR }}
+          fi
+
           DEVICE=${{ github.event.inputs.device_name }}
 
           echo "=== Build Information ===" > build_info.txt
@@ -166,6 +165,8 @@ jobs:
 
           if [ -f "out/target/product/${DEVICE}/recovery.img" ]; then
             echo "Recovery Size: $(du -h out/target/product/${DEVICE}/recovery.img | cut -f1)" >> build_info.txt
+          else
+            echo "Status: Build failed or recovery.img not found" >> build_info.txt
           fi
 
           cat build_info.txt
@@ -176,3 +177,4 @@ jobs:
         with:
           name: build-info-${{ github.run_id }}
           path: ${{ env.BUILD_DIR }}/build_info.txt
+          if-no-files-found: warn
