@@ -53,11 +53,8 @@ BOARD_MKBOOTIMG_ARGS += --pagesize $(BOARD_KERNEL_PAGESIZE)
 BOARD_MKBOOTIMG_ARGS += --base $(BOARD_KERNEL_BASE)
 
 # Kernel
-# 预编译内核未提供，使用 TARGET_NO_KERNEL 跳过内核构建
-TARGET_NO_KERNEL := true
-# 如需使用预编译内核，请将 Image.gz-dtb 放入 device/realme/realme_gt_neo/prebuilt/ 目录
-# 并取消下面注释，同时将 TARGET_NO_KERNEL 设为 false
-# TARGET_PREBUILT_KERNEL := device/realme/realme_gt_neo/prebuilt/Image.gz-dtb
+# 使用预编译内核（工作流会自动生成占位内核，实际使用时请替换为真实内核）
+TARGET_PREBUILT_KERNEL := device/realme/realme_gt_neo/prebuilt/Image.gz-dtb
 BOARD_KERNEL_IMAGE_NAME := Image.gz-dtb
 # TARGET_KERNEL_SOURCE := kernel/realme/mt6893
 # TARGET_KERNEL_CONFIG := realme_gt_neo_defconfig

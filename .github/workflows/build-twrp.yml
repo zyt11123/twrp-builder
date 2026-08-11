@@ -116,6 +116,26 @@ jobs:
 
           echo "Device tree setup complete"
 
+      - name: Prepare Kernel
+        run: |
+          cd ${{ env.BUILD_DIR }}
+          DEVICE=${{ github.event.inputs.device_name }}
+
+          # Create prebuilt kernel directory
+          mkdir -p "device/realme/$DEVICE/prebuilt"
+
+          # Create placeholder kernel if not provided
+          if [ ! -f "device/realme/$DEVICE/prebuilt/Image.gz-dtb" ]; then
+            echo "No prebuilt kernel found. Creating placeholder kernel..."
+            # Create a minimal gzip file as placeholder
+            echo -n "placeholder" | gzip > "device/realme/$DEVICE/prebuilt/Image.gz-dtb"
+            echo "WARNING: Using placeholder kernel. Recovery image will NOT be bootable!"
+            echo "To create a bootable recovery, replace with real kernel from stock ROM."
+          else
+            echo "Prebuilt kernel found."
+          fi
+          ls -la "device/realme/$DEVICE/prebuilt/"
+
       - name: Build TWRP
         run: |
           cd ${{ env.BUILD_DIR }}
@@ -135,7 +155,6 @@ jobs:
 
           # Set build vars BEFORE sourcing envsetup
           export ALLOW_MISSING_DEPENDENCIES=true
-          export TARGET_NO_KERNEL=true
           export LC_ALL=C
           export USE_CCACHE=1
           export CCACHE_DIR=/home/runner/.ccache
@@ -167,11 +186,25 @@ jobs:
           fi
 
           echo "Starting TWRP build..."
-          if make -j$(nproc --all) recoveryimage 2>&1 | tee build.log; then
+          set -o pipefail
+          make -j$(nproc --all) recoveryimage 2>&1 | tee build.log
+          BUILD_EXIT=$?
+          
+          if [ $BUILD_EXIT -eq 0 ]; then
             echo "Build completed!"
             ls -la out/target/product/${DEVICE}/ || echo "Output directory not found"
+            # Check if recovery.img was actually created
+            if [ -f "out/target/product/${DEVICE}/recovery.img" ]; then
+              echo "recovery.img found!"
+              du -h out/target/product/${DEVICE}/recovery.img
+            else
+              echo "ERROR: recovery.img was not created!"
+              echo "=== Last 100 lines of build log ==="
+              tail -100 build.log || true
+              exit 1
+            fi
           else
-            echo "=== BUILD FAILED ==="
+            echo "=== BUILD FAILED (exit code: $BUILD_EXIT) ==="
             echo "=== Last 100 lines of build log ==="
             tail -100 build.log || true
             exit 1
