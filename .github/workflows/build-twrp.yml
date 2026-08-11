@@ -85,9 +85,7 @@ jobs:
           repo sync -j$(nproc --all) --force-sync --no-clone-bundle --no-tags
 
           echo "Source sync completed"
-          echo "Checking build envsetup.sh..."
-          ls -la build/envsetup.sh || echo "WARNING: build/envsetup.sh not found!"
-          ls build/ || true
+          ls -la build/envsetup.sh && echo "envsetup.sh found" || echo "WARNING: envsetup.sh not found"
 
       - name: Clone Device Tree
         run: |
@@ -98,10 +96,10 @@ jobs:
           DT_BRANCH=${{ github.event.inputs.device_tree_branch }}
 
           if [ -n "$DT_REPO" ]; then
-            echo "Cloning device tree from: $DT_REPO (branch: $DT_BRANCH)"
+            echo "Cloning device tree from: $DT_REPO"
             git clone "$DT_REPO" -b "$DT_BRANCH" "device/realme/$DEVICE" --depth=1
           else
-            echo "Using local device tree from repository"
+            echo "Using local device tree"
             mkdir -p "device/realme/$DEVICE"
             cp -r $GITHUB_WORKSPACE/device/realme_gt_neo/* "device/realme/$DEVICE/"
           fi
@@ -110,39 +108,40 @@ jobs:
           ls -la "device/realme/$DEVICE/"
 
           if [ ! -f "device/realme/$DEVICE/AndroidProducts.mk" ]; then
-            echo "ERROR: Device tree not found or incomplete!"
+            echo "ERROR: Device tree incomplete!"
             exit 1
           fi
 
-          echo "Device tree setup complete"
+          echo "Device tree ready"
 
       - name: Build TWRP
         run: |
-          set -x
+          set -e
           cd ${{ env.BUILD_DIR }}
 
           DEVICE=${{ github.event.inputs.device_name }}
-
-          echo "=== Sourcing build/envsetup.sh ==="
-          source build/envsetup.sh
-
-          if [ "${{ github.event.inputs.make_clean }}" = "是" ]; then
-            echo "Cleaning build directory..."
-            make clean
-          fi
 
           export ALLOW_MISSING_DEPENDENCIES=true
           export LC_ALL=C
           export USE_CCACHE=1
           export CCACHE_DIR=/home/runner/.ccache
+          export TARGET_NO_KERNEL=true
+
+          echo "=== Sourcing envsetup ==="
+          source build/envsetup.sh
+
+          if [ "${{ github.event.inputs.make_clean }}" = "是" ]; then
+            echo "Cleaning..."
+            make clean
+          fi
 
           echo "=== Lunching omni_${DEVICE}-eng ==="
           lunch "omni_${DEVICE}-eng"
 
           echo "=== Starting build ==="
-          make -j$(nproc --all) recoveryimage
+          make -j$(nproc --all) recoveryimage 2>&1 | tail -50
 
-          echo "=== Build completed ==="
+          echo "=== Build done ==="
           ls -la out/target/product/${DEVICE}/ || true
 
       - name: Upload Recovery Image
